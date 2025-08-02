@@ -1,18 +1,19 @@
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use pixels::{Pixels, SurfaceTexture};
 use winit::dpi::LogicalSize;
+use winit::error::EventLoopError;
 use winit::event::{Event, WindowEvent};
 use winit::event_loop::{ControlFlow, EventLoop};
 use winit::window::WindowBuilder;
 
-extern crate rand;
 use rand::Rng;
 
 const WIDTH: u32 = 160;
 const HEIGHT: u32 = 144;
+const MICROS_PER_FRAME: u64 = 1_000_000 / 60;
 
-fn main() {
+fn main() -> Result<(), EventLoopError> {
     let event_loop = EventLoop::new().unwrap();
     event_loop.set_control_flow(ControlFlow::Poll);
 
@@ -32,38 +33,41 @@ fn main() {
         Pixels::new(WIDTH, HEIGHT, surface).unwrap()
     };
 
-    let mut frame_counter = 0;
-    let mut frame_time = Instant::now();
-    let _ = event_loop.run(|event, elwt| {
+    let mut fps_counter = 0;
+    let mut fps_time = Instant::now();
+    let mut last_frame_time = Instant::now();
+    event_loop.run(|event, elwt| {
         match event {
             Event::WindowEvent { event: WindowEvent::CloseRequested, .. } => {
                 elwt.exit();
-                return;
             },
             Event::WindowEvent { event: WindowEvent::RedrawRequested, .. } => {
                 if let Err(_) = pixels.render() {
                     eprintln!("pixels render error");
                     elwt.exit();
-                    return;
                 }
-                frame_counter += 1;
-                if frame_time.elapsed().as_secs() == 1 {
-                    let new_title = format!("rgb [{} fps]", frame_counter);
+                fps_counter += 1;
+                if fps_time.elapsed().as_secs() == 1 {
+                    let new_title = format!("rgb [{} fps]", fps_counter);
                     window.set_title(&new_title);
-                    frame_counter = 0;
-                    frame_time = Instant::now();
+                    fps_counter = 0;
+                    fps_time = Instant::now();
                 }
             },
             Event::AboutToWait => {
-                for pix in pixels.frame_mut().chunks_exact_mut(4) {
-                    let r: u8 = rand::rng().random();
-                    let g: u8 = rand::rng().random();
-                    let b: u8 = rand::rng().random();
-                    pix.copy_from_slice(&[r, g, b, 0xff]);
+                // Limit framerate to 60 FPS.
+                if last_frame_time.elapsed() >= Duration::from_micros(MICROS_PER_FRAME) {
+                    last_frame_time = Instant::now();
+                    for pix in pixels.frame_mut().chunks_exact_mut(4) {
+                        let r: u8 = rand::rng().random();
+                        let g: u8 = rand::rng().random();
+                        let b: u8 = rand::rng().random();
+                        pix.copy_from_slice(&[r, g, b, 0xff]);
+                    }
+                    window.request_redraw();
                 }
-                window.request_redraw();
             },
             _ => ()
         }
-    });
+    })
 }
