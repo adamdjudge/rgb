@@ -1,0 +1,117 @@
+use rand::{self, Rng};
+
+const SCREEN_WIDTH: usize = 160;
+const SCREEN_HEIGHT: usize = 144;
+
+const BG_WIDTH: usize = 256;
+const BG_HEIGHT: usize = 256;
+
+const TILEMAP_WIDTH: usize = 32;
+const TILE_WIDTH: usize = 8;
+const TILE_HEIGHT: usize = 8;
+
+#[derive(Default)]
+pub struct PPU {
+    pub lcdc: u8,   // LCD control register
+    pub scx: u8,    // Scroll X
+    pub scy: u8,    // Scroll Y
+    pub ly: u8,     // LCDC current Y position
+    pub lyc: u8,    // LY compare
+    pub wy: u8,     // Window Y position
+    pub bgp: u8,    // Background palette (non-color mode)
+    pub obp0: u8,   // Object palette 0 (non-color mode)
+    pub obp1: u8,   // Object palette 1 (non-color mode)
+    pub bgpi: u8,   // Background palette index (color mode)
+    pub obpi: u8,   // Object palette index (color mode)
+
+    stat: u8,       // LCDC status register
+    bgpd: Vec<u8>,  // Background palette data (color mode)
+    obpd: Vec<u8>,  // Object palette data (color mode)
+}
+
+type Color = [u8; 4];
+
+impl PPU {
+    pub fn new() -> Self {
+        let mut ppu = Self::default();
+        // BG palette is initialized to all white on startup, but object palette
+        // is left as random junk.
+        for _ in 0..64 {
+            ppu.bgpd.push(0xff);
+            ppu.obpd.push(rand::rng().random());
+        }
+        ppu
+    }
+
+    fn get_tile_pixel_color(
+        &self,
+        tile: u8,
+        x: usize,
+        y: usize,
+        vram: &Vec<u8>,
+        select: bool
+    ) -> Color {
+        assert!(x < 8 && y < 8);
+        let index = if select {
+            if tile < 128 { tile as usize + 256 } else { tile as usize + 128 }
+        } else {
+            tile as usize
+        };
+        let bit0 = (vram[index*16 + y*2] >> (7-x)) & 0x1;
+        let bit1 = (vram[index*16 + y*2 + 1] >> (7-x)) & 0x1;
+        let p = bit0 | (bit1 << 1);
+        let color = (self.bgp >> (p*2)) & 0x3;
+        match color {
+            0b00 => [0x9b, 0xbc, 0x0f, 0xff],
+            0b01 => [0x8b, 0xac, 0x0f, 0xff],
+            0b10 => [0x30, 0x62, 0x30, 0xff],
+            0b11 => [0x0f, 0x38, 0x0f, 0xff],
+            _ => panic!()
+        }
+    }
+
+    pub fn draw_scanline(&mut self, framebuf: &mut [u8], vram: &Vec<u8>) {
+        let scanline_start = self.ly as usize * SCREEN_WIDTH * 4;
+        let scanline = &mut framebuf[scanline_start..scanline_start+SCREEN_WIDTH*4];
+
+        for (x, pixel) in scanline.chunks_exact_mut(4).enumerate() {
+            let tilemap_x = ((x + self.scx as usize) % BG_WIDTH) / TILE_WIDTH;
+            let tilemap_y = ((self.ly as usize + self.scy as usize) % BG_HEIGHT) / TILE_HEIGHT;
+
+            let tilemap_index = tilemap_y * TILEMAP_WIDTH + tilemap_x;
+            let tile = vram[0x1800 + tilemap_index];
+
+            let tile_x = (x + self.scx as usize) % TILE_WIDTH;
+            let tile_y = (self.ly as usize + self.scy as usize) % TILE_HEIGHT;
+
+            let color = self.get_tile_pixel_color(tile, tile_x, tile_y, vram, false);
+            pixel.copy_from_slice(&color);
+        }
+
+        self.ly = (self.ly + 1) % SCREEN_HEIGHT as u8;
+    }
+
+    pub fn get_stat(&self) -> u8 {
+        self.stat
+    }
+
+    pub fn set_stat(&mut self, stat: u8) {
+        self.stat = (self.stat & 0x7) | (stat & 0xf8);
+    }
+
+    pub fn get_bgpd(&self) -> u8 {
+        self.bgpd[(self.bgpi & 0x3f) as usize]
+    }
+
+    pub fn set_bgpd(&mut self, value: u8) {
+         self.bgpd[(self.bgpi & 0x3f) as usize] = value;  
+    }
+
+    pub fn get_obpd(&self) -> u8 {
+        self.obpd[(self.obpi & 0x3f) as usize]
+    }
+
+    pub fn set_obpd(&mut self, value: u8) {
+         self.obpd[(self.obpi & 0x3f) as usize] = value;
+    }
+}

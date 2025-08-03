@@ -9,6 +9,9 @@ use winit::window::WindowBuilder;
 
 use rand::Rng;
 
+mod ppu;
+use crate::ppu::*;
+
 const WIDTH: u32 = 160;
 const HEIGHT: u32 = 144;
 const MICROS_PER_FRAME: u64 = 1_000_000 / 60;
@@ -36,6 +39,18 @@ fn main() -> Result<(), EventLoopError> {
     let mut fps_counter = 0;
     let mut fps_time = Instant::now();
     let mut last_frame_time = Instant::now();
+
+    let mut ppu = PPU::new();
+    ppu.bgp = 0b11100100;
+
+    let mut vram: Vec<u8> = vec![];
+    for _ in 0..0x1800 {
+        vram.push(rand::rng().random());
+    }
+    for _ in 0x1800..0x1fff {
+        vram.push(0);
+    }
+
     event_loop.run(|event, elwt| {
         match event {
             Event::WindowEvent { event: WindowEvent::CloseRequested, .. } => {
@@ -58,13 +73,12 @@ fn main() -> Result<(), EventLoopError> {
                 // Limit framerate to 60 FPS.
                 if last_frame_time.elapsed() >= Duration::from_micros(MICROS_PER_FRAME) {
                     last_frame_time = Instant::now();
-                    for pix in pixels.frame_mut().chunks_exact_mut(4) {
-                        let r: u8 = rand::rng().random();
-                        let g: u8 = rand::rng().random();
-                        let b: u8 = rand::rng().random();
-                        pix.copy_from_slice(&[r, g, b, 0xff]);
+                    for _ in 0..HEIGHT {
+                        ppu.draw_scanline(pixels.frame_mut(), &vram);
                     }
                     window.request_redraw();
+                    ppu.scx = ppu.scx.wrapping_add(1);
+                    ppu.scy = ppu.scy.wrapping_add(1);
                 }
             },
             _ => ()
