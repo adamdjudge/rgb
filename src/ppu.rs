@@ -30,7 +30,18 @@ pub struct PPU {
 }
 
 // OAM sprite data
-struct Sprite { y: u8, x: u8, tile: u8, attrs: u8 }
+struct Sprite { y: isize, x: isize, tile: u8, attrs: u8 }
+
+impl Sprite {
+    fn from(obj: &[u8]) -> Self {
+        Self {
+            y: obj[0] as isize - 16,
+            x: obj[1] as isize - 8,
+            tile: obj[2],
+            attrs: obj[3],
+        }
+    }
+}
 
 impl PPU {
     pub fn new() -> Self {
@@ -72,6 +83,14 @@ impl PPU {
 
     pub fn draw_scanline(&mut self, framebuf: &mut [u8], vram: &Vec<u8>, oam: &Vec<u8>) {
         let y = self.ly as usize;
+        let mut sprites_this_line: Vec<Sprite> = oam
+            .chunks_exact(4)
+            .map(|obj| Sprite::from(obj))
+            .filter(|s| (y as isize) >= s.y && (y as isize) < s.y + (TILE_HEIGHT as isize))
+            .take(10)
+            .collect();
+        sprites_this_line.sort_by(|s1, s2| s1.x.cmp(&s2.x)); // NOTE: don't do this in CGB mode
+
         let scanline_start = y * SCREEN_WIDTH * 4;
         let scanline = &mut framebuf[scanline_start..scanline_start+SCREEN_WIDTH*4];
 
@@ -86,27 +105,20 @@ impl PPU {
             let tile_y = (y + self.scy as usize) % TILE_HEIGHT;
             let bg_color = Self::get_tile_pixel_color(tile, tile_x, tile_y, vram, false);
 
-            let sprite = oam
-                .chunks_exact(4)
-                .map(|obj| Sprite { y: obj[0], x: obj[1], tile: obj[2], attrs: obj[3] })
-                .filter(|sprite| {
-                    let sx = sprite.x as isize - 8;
-                    let sy = sprite.y as isize - 16;
-                    (x as isize) >= sx && (x as isize) < sx + (TILE_WIDTH as isize)
-                        && (y as isize) >= sy && (y as isize) < sy + (TILE_HEIGHT as isize)
-                })
-                .nth(0); // NOTE: CGB ranks priority by X rather than position in OAM
+            let sprite = sprites_this_line
+                .iter()
+                .find(|&s| (x as isize) >= s.x && (x as isize) < s.x + (TILE_WIDTH as isize));
 
             if let Some(sprite) = sprite {
-                let (spr_x, spr_y) = (x % TILE_WIDTH, y % TILE_HEIGHT);
+                let spr_x = (x as isize - sprite.x) as usize;
+                let spr_y = (y as isize - sprite.y) as usize;
                 let spr_color = Self::get_tile_pixel_color(sprite.tile, spr_x, spr_y, vram, false);
 
                 if spr_color == 0 {
                     Self::put_color(pixel, bg_color, self.bgp);
-                } else if sprite.attrs & 0x10 != 0 {
-                    Self::put_color(pixel, spr_color, self.obp1);
                 } else {
-                    Self::put_color(pixel, spr_color, self.obp0);
+                    let palette = if sprite.attrs & 0x10 == 0 { self.obp0 } else { self.obp1 };
+                    Self::put_color(pixel, spr_color, palette);
                 }
             } else {
                 Self::put_color(pixel, bg_color, self.bgp);

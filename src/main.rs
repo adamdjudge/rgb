@@ -56,9 +56,22 @@ fn main() -> Result<(), EventLoopError> {
     let mut oam: Vec<u8> = vec![0; 160];
     oam[2] = 1;
 
-    for i in 16..32 {
-        vram[i] = 0xff;
-    }
+    vram[16] = 0b00011000;
+    vram[17] = 0b00011000;
+    vram[18] = 0b00111100;
+    vram[19] = 0b00111100;
+    vram[20] = 0b01111110;
+    vram[21] = 0b01111110;
+    vram[22] = 0b11111111;
+    vram[23] = 0b11111111;
+    vram[24] = 0b11111111;
+    vram[25] = 0b11111111;
+    vram[26] = 0b01111110;
+    vram[27] = 0b01111110;
+    vram[28] = 0b00111100;
+    vram[29] = 0b00111100;
+    vram[30] = 0b00011000;
+    vram[31] = 0b00011000;
 
     event_loop.run(|event, elwt| {
         match event {
