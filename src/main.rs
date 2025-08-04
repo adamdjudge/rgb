@@ -42,6 +42,8 @@ fn main() -> Result<(), EventLoopError> {
 
     let mut ppu = PPU::new();
     ppu.bgp = 0b11100100;
+    ppu.obp0 = 0b11100100;
+    ppu.obp1 = 0b11100100;
 
     let mut vram: Vec<u8> = vec![];
     for _ in 0..0x1800 {
@@ -49,6 +51,13 @@ fn main() -> Result<(), EventLoopError> {
     }
     for _ in 0x1800..0x1fff {
         vram.push(0);
+    }
+
+    let mut oam: Vec<u8> = vec![0; 160];
+    oam[2] = 1;
+
+    for i in 16..32 {
+        vram[i] = 0xff;
     }
 
     event_loop.run(|event, elwt| {
@@ -74,11 +83,13 @@ fn main() -> Result<(), EventLoopError> {
                 if last_frame_time.elapsed() >= Duration::from_micros(MICROS_PER_FRAME) {
                     last_frame_time = Instant::now();
                     for _ in 0..HEIGHT {
-                        ppu.draw_scanline(pixels.frame_mut(), &vram);
+                        ppu.draw_scanline(pixels.frame_mut(), &vram, &oam);
                     }
                     window.request_redraw();
-                    ppu.scx = ppu.scx.wrapping_add(1);
-                    ppu.scy = ppu.scy.wrapping_add(1);
+                    // ppu.scx = ppu.scx.wrapping_add(1);
+                    // ppu.scy = ppu.scy.wrapping_add(1);
+                    oam[0] = oam[0].wrapping_add(1);
+                    oam[1] = oam[1].wrapping_add(1);
                 }
             },
             _ => ()
