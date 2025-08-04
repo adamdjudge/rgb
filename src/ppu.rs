@@ -29,13 +29,13 @@ pub struct PPU {
     obpd: Vec<u8>,  // Object palette data (color mode)
 }
 
-type Color = [u8; 4];
+enum ColorIndex { Color0, Color1, Color2, Color3 }
 
 impl PPU {
     pub fn new() -> Self {
         let mut ppu = Self::default();
-        // BG palette is initialized to all white on startup, but object palette
-        // is left as random junk.
+        // Background palette is initialized to all white on startup, but object palette is left as
+        // random junk.
         for _ in 0..64 {
             ppu.bgpd.push(0xff);
             ppu.obpd.push(rand::rng().random());
@@ -43,31 +43,30 @@ impl PPU {
         ppu
     }
 
-    fn get_tile_pixel_color(
-        &self,
-        tile: u8,
-        x: usize,
-        y: usize,
-        vram: &Vec<u8>,
-        select: bool
-    ) -> Color {
-        assert!(x < 8 && y < 8);
+    // Get the color index of pixel (x,y) of the given tile. If select is false, use "0x8000"
+    // addressing into VRAM tile data, and if select is true, use "0x8800" addressing.
+    fn get_tile_pixel_color(tile: u8, x: usize, y: usize, vram: &Vec<u8>, select: bool) -> u8 {
+        assert!(x < 8);
+        assert!(y < 8);
         let index = if select {
             if tile < 128 { tile as usize + 256 } else { tile as usize + 128 }
         } else {
             tile as usize
         };
-        let bit0 = (vram[index*16 + y*2] >> (7-x)) & 0x1;
-        let bit1 = (vram[index*16 + y*2 + 1] >> (7-x)) & 0x1;
-        let p = bit0 | (bit1 << 1);
-        let color = (self.bgp >> (p*2)) & 0x3;
-        match color {
+        let (byte0, byte1) = (vram[index*16 + y*2], vram[index*16 + y*2 + 1]);
+        let (bit0, bit1) = ((byte0 >> (7-x)) & 0x1, (byte1 >> (7-x)) & 0x1);
+        bit0 | (bit1 << 1)
+    }
+
+    fn put_color(pixel: &mut [u8], color: u8, palette: u8) {
+        let rgba = match (palette >> (color*2)) & 0x3 {
             0b00 => [0x9b, 0xbc, 0x0f, 0xff],
             0b01 => [0x8b, 0xac, 0x0f, 0xff],
             0b10 => [0x30, 0x62, 0x30, 0xff],
             0b11 => [0x0f, 0x38, 0x0f, 0xff],
-            _ => panic!()
-        }
+            _ => unreachable!()
+        };
+        pixel.copy_from_slice(&rgba);
     }
 
     pub fn draw_scanline(&mut self, framebuf: &mut [u8], vram: &Vec<u8>) {
@@ -84,8 +83,8 @@ impl PPU {
             let tile_x = (x + self.scx as usize) % TILE_WIDTH;
             let tile_y = (self.ly as usize + self.scy as usize) % TILE_HEIGHT;
 
-            let color = self.get_tile_pixel_color(tile, tile_x, tile_y, vram, false);
-            pixel.copy_from_slice(&color);
+            let color = Self::get_tile_pixel_color(tile, tile_x, tile_y, vram, false);
+            Self::put_color(pixel, color, self.bgp);
         }
 
         self.ly = (self.ly + 1) % SCREEN_HEIGHT as u8;
