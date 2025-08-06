@@ -1,8 +1,9 @@
 use rand::{self, Rng};
 
+pub const SCANLINES: usize = 154;
+
 const SCREEN_WIDTH: usize = 160;
 const SCREEN_HEIGHT: usize = 144;
-const SCANLINES: usize = 154;
 
 const BG_WIDTH: usize = 256;
 const BG_HEIGHT: usize = 256;
@@ -32,25 +33,6 @@ const STAT_LCD: u8 = 0x03;
 const STAT_MODEMASK: u8 = 0x03;
 const STAT_RWMASK: u8 = 0x78;
 
-#[derive(Default)]
-pub struct PPU {
-    pub lcdc: u8,   // LCD control register
-    pub scx: u8,    // Scroll X
-    pub scy: u8,    // Scroll Y
-    pub ly: u8,     // LCDC current Y position
-    pub lyc: u8,    // LY compare
-    pub wy: u8,     // Window Y position
-    pub bgp: u8,    // Background palette (non-color mode)
-    pub obp0: u8,   // Object palette 0 (non-color mode)
-    pub obp1: u8,   // Object palette 1 (non-color mode)
-    pub bgpi: u8,   // Background palette index (color mode)
-    pub obpi: u8,   // Object palette index (color mode)
-
-    stat: u8,       // LCDC status register
-    bgpd: Vec<u8>,  // Background palette data (color mode)
-    obpd: Vec<u8>,  // Object palette data (color mode)
-}
-
 // OAM sprite data
 struct Sprite { y: isize, x: isize, tile: u8, attrs: u8 }
 
@@ -65,6 +47,26 @@ impl Sprite {
     }
 }
 
+#[derive(Default)]
+pub struct PPU {
+    pub lcdc: u8,   // LCD control register
+    pub scx: u8,    // Scroll X
+    pub scy: u8,    // Scroll Y
+    pub ly: u8,     // LCDC current Y position
+    pub lyc: u8,    // LY compare
+    pub wy: u8,     // Window Y position
+    pub wx: u8,     // Window X position minus 7
+    pub bgp: u8,    // Background palette (non-color mode)
+    pub obp0: u8,   // Object palette 0 (non-color mode)
+    pub obp1: u8,   // Object palette 1 (non-color mode)
+    pub bgpi: u8,   // Background palette index (color mode)
+    pub obpi: u8,   // Object palette index (color mode)
+
+    stat: u8,       // LCDC status register
+    bgpd: Vec<u8>,  // Background palette data (color mode)
+    obpd: Vec<u8>,  // Object palette data (color mode)
+}
+
 impl PPU {
     pub fn new() -> Self {
         let mut ppu = Self::default();
@@ -74,6 +76,10 @@ impl PPU {
             ppu.bgpd.push(0xff);
             ppu.obpd.push(rand::rng().random());
         }
+        ppu.lcdc = LCDC_ON | LCDC_BG8000 | LCDC_BGON;
+        ppu.bgp = 0xFC;
+        ppu.obp0 = 0xFF;
+        ppu.obp1 = 0xFF;
         ppu
     }
 

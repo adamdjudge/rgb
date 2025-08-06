@@ -7,10 +7,9 @@ use winit::event::{Event, WindowEvent};
 use winit::event_loop::{ControlFlow, EventLoop};
 use winit::window::WindowBuilder;
 
-use rand::Rng;
-
 mod ppu;
-use crate::ppu::*;
+mod system;
+use crate::system::*;
 
 const WIDTH: u32 = 160;
 const HEIGHT: u32 = 144;
@@ -40,39 +39,7 @@ fn main() -> Result<(), EventLoopError> {
     let mut fps_time = Instant::now();
     let mut last_frame_time = Instant::now();
 
-    let mut ppu = PPU::new();
-    ppu.bgp = 0b11100100;
-    ppu.obp0 = 0b11100100;
-    ppu.obp1 = 0b11100100;
-    ppu.lcdc = 0b10000011;
-
-    let mut vram: Vec<u8> = vec![];
-    for _ in 0..0x1800 {
-        vram.push(rand::rng().random());
-    }
-    for _ in 0x1800..0x1fff {
-        vram.push(0);
-    }
-
-    let mut oam: Vec<u8> = vec![0; 160];
-    oam[2] = 1;
-
-    vram[16] = 0b00011000;
-    vram[17] = 0b00011000;
-    vram[18] = 0b00111100;
-    vram[19] = 0b00111100;
-    vram[20] = 0b01111110;
-    vram[21] = 0b01111110;
-    vram[22] = 0b11111111;
-    vram[23] = 0b11111111;
-    vram[24] = 0b11111111;
-    vram[25] = 0b11111111;
-    vram[26] = 0b01111110;
-    vram[27] = 0b01111110;
-    vram[28] = 0b00111100;
-    vram[29] = 0b00111100;
-    vram[30] = 0b00011000;
-    vram[31] = 0b00011000;
+    let mut system = System::new();
 
     event_loop.run(|event, elwt| {
         match event {
@@ -96,14 +63,8 @@ fn main() -> Result<(), EventLoopError> {
                 // Limit framerate to 60 FPS.
                 if last_frame_time.elapsed() >= Duration::from_micros(MICROS_PER_FRAME) {
                     last_frame_time = Instant::now();
-                    for _ in 0..HEIGHT {
-                        ppu.draw_scanline(pixels.frame_mut(), &vram, &oam);
-                    }
+                    system.run_frame(pixels.frame_mut());
                     window.request_redraw();
-                    // ppu.scx = ppu.scx.wrapping_add(1);
-                    // ppu.scy = ppu.scy.wrapping_add(1);
-                    oam[0] = oam[0].wrapping_add(1);
-                    oam[1] = oam[1].wrapping_add(1);
                 }
             },
             _ => ()
