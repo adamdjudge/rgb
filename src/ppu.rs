@@ -2,6 +2,7 @@ use rand::{self, Rng};
 
 const SCREEN_WIDTH: usize = 160;
 const SCREEN_HEIGHT: usize = 144;
+const SCANLINES: usize = 154;
 
 const BG_WIDTH: usize = 256;
 const BG_HEIGHT: usize = 256;
@@ -9,6 +10,27 @@ const BG_HEIGHT: usize = 256;
 const TILEMAP_WIDTH: usize = 32;
 const TILE_WIDTH: usize = 8;
 const TILE_HEIGHT: usize = 8;
+
+const LCDC_ON: u8 = 0x80;
+const LCDC_WIN9C00: u8 = 0x40;
+const LCDC_WINON: u8 = 0x20;
+const LCDC_BG8000: u8 = 0x10;
+const LCDC_BG9C00: u8 = 0x08;
+const LCDC_OBJ16: u8 = 0x04;
+const LCDC_OBJON: u8 = 0x02;
+const LCDC_BGON: u8 = 0x01;
+
+const STAT_ILYC: u8 = 0x40;
+const STAT_IOAM: u8 = 0x20;
+const STAT_IVBL: u8 = 0x10;
+const STAT_IHBL: u8 = 0x08;
+const STAT_LYC: u8 = 0x04;
+const STAT_HBL: u8 = 0x00;
+const STAT_VBL: u8 = 0x01;
+const STAT_OAM: u8 = 0x02;
+const STAT_LCD: u8 = 0x03;
+const STAT_MODEMASK: u8 = 0x03;
+const STAT_RWMASK: u8 = 0x78;
 
 #[derive(Default)]
 pub struct PPU {
@@ -57,7 +79,7 @@ impl PPU {
 
     // Get the color index of pixel (x,y) of the given tile. If select is false, use "0x8000"
     // addressing into VRAM tile data, and if select is true, use "0x8800" addressing.
-    fn get_tile_pixel_color(tile: u8, x: usize, y: usize, vram: &Vec<u8>, select: bool) -> u8 {
+    fn get_tile_pixel_color(tile: u8, x: usize, y: usize, vram: &[u8], select: bool) -> u8 {
         assert!(x < 8);
         assert!(y < 8);
         let index = if select {
@@ -81,8 +103,19 @@ impl PPU {
         pixel.copy_from_slice(&rgba);
     }
 
-    pub fn draw_scanline(&mut self, framebuf: &mut [u8], vram: &Vec<u8>, oam: &Vec<u8>) {
+    pub fn draw_scanline(&mut self, framebuf: &mut [u8], vram: &[u8], oam: &[u8]) {
         let y = self.ly as usize;
+        self.ly = (self.ly + 1) % SCANLINES as u8;
+        if self.ly == self.lyc {
+            self.stat |= STAT_LYC;
+        } else {
+            self.stat &= !STAT_LYC;
+        }
+
+        if y >= SCREEN_HEIGHT {
+            return;
+        }
+
         let mut sprites_this_line: Vec<Sprite> = oam
             .chunks_exact(4)
             .map(|obj| Sprite::from(obj))
@@ -103,7 +136,10 @@ impl PPU {
 
             let tile_x = (x + self.scx as usize) % TILE_WIDTH;
             let tile_y = (y + self.scy as usize) % TILE_HEIGHT;
-            let bg_color = Self::get_tile_pixel_color(tile, tile_x, tile_y, vram, false);
+
+            let bg_select = self.lcdc & LCDC_BG8000 == 0;
+            let bg_color = Self::get_tile_pixel_color(tile, tile_x, tile_y, vram, bg_select);
+            let bg_palette = if self.lcdc & LCDC_BGON == 0 { 0 } else { self.bgp };
 
             let sprite = sprites_this_line
                 .iter()
@@ -113,19 +149,17 @@ impl PPU {
                 let spr_x = (x as isize - sprite.x) as usize;
                 let spr_y = (y as isize - sprite.y) as usize;
                 let spr_color = Self::get_tile_pixel_color(sprite.tile, spr_x, spr_y, vram, false);
+                let spr_palette = if sprite.attrs & 0x10 == 0 { self.obp0 } else { self.obp1 };
 
-                if spr_color == 0 {
-                    Self::put_color(pixel, bg_color, self.bgp);
+                if spr_color == 0 || self.lcdc & LCDC_OBJON == 0 {
+                    Self::put_color(pixel, bg_color, bg_palette);
                 } else {
-                    let palette = if sprite.attrs & 0x10 == 0 { self.obp0 } else { self.obp1 };
-                    Self::put_color(pixel, spr_color, palette);
+                    Self::put_color(pixel, spr_color, spr_palette);
                 }
             } else {
-                Self::put_color(pixel, bg_color, self.bgp);
+                Self::put_color(pixel, bg_color, bg_palette);
             }
         }
-
-        self.ly = (self.ly + 1) % SCREEN_HEIGHT as u8;
     }
 
     pub fn get_stat(&self) -> u8 {
@@ -133,7 +167,7 @@ impl PPU {
     }
 
     pub fn set_stat(&mut self, stat: u8) {
-        self.stat = (self.stat & 0x7) | (stat & 0xf8);
+        self.stat = (self.stat & !STAT_RWMASK) | (stat & STAT_RWMASK);
     }
 
     pub fn get_bgpd(&self) -> u8 {

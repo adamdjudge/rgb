@@ -44,6 +44,7 @@ fn main() -> Result<(), EventLoopError> {
     ppu.bgp = 0b11100100;
     ppu.obp0 = 0b11100100;
     ppu.obp1 = 0b11100100;
+    ppu.lcdc = 0b10000011;
 
     let mut vram: Vec<u8> = vec![];
     for _ in 0..0x1800 {
