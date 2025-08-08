@@ -68,7 +68,6 @@ impl System {
 
     pub fn write(&mut self, addr: u16, data: u8) {
         match addr {
-            0x0000..0x8000 => self.rom[addr as usize] = data,
             0x8000..0xA000 => self.vram[addr as usize - 0x8000] = data,
             0xA000..0xC000 => self.extram[addr as usize - 0xA000] = data,
             0xC000..0xE000 => self.wram[addr as usize - 0xC000] = data,
@@ -90,7 +89,16 @@ impl System {
             0xFF6B => self.ppu.set_obpd(data),
             0xFF80..0xFFFF => self.hram[addr as usize - 0xFF80] = data,
             0xFFFF => self.ie = data,
-            _ => {},
+
+            // OAM DMA transfer
+            0xFF46 => {
+                let src_addr = (data as u16) << 8;
+                for i in 0..OAM_SIZE {
+                    self.oam[i] = self.read(src_addr + i as u16);
+                }
+            },
+
+            _ => (),
         };
     }
 
