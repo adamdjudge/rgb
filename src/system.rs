@@ -1,6 +1,6 @@
 use rand::Rng;
 
-use crate::ppu::*;
+use crate::ppu::PPU;
 
 const ROM_SIZE: usize = 32 * 1024;
 const VRAM_SIZE: usize = 8 * 1024;
@@ -10,7 +10,7 @@ const OAM_SIZE: usize = 160;
 const HRAM_SIZE: usize = 127;
 
 pub struct System {
-    ppu: PPU,
+    pub ppu: PPU,
 
     rom: Vec<u8>,
     vram: Vec<u8>,
@@ -102,9 +102,12 @@ impl System {
         };
     }
 
-    pub fn run_frame(&mut self, framebuf: &mut [u8]) {
-        for _ in 0..SCANLINES {
-            self.ppu.draw_scanline(framebuf, &mut self.vram, &mut self.oam);
-        }
+    pub fn load_rom(&mut self, path: &str) {
+        let rom = std::fs::read(path).unwrap();
+        self.rom.copy_from_slice(&rom);
+    }
+
+    pub fn draw_scanline(&mut self, framebuf: &mut [u8]) {
+        self.ppu.draw_scanline(framebuf, &mut self.vram, &mut self.oam);
     }
 }
