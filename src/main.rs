@@ -72,10 +72,6 @@ fn main() -> Result<(), EventLoopError> {
 
                     for _ in 0..SCANLINES {
                         system.draw_scanline(pixels.frame_mut());
-                        if system.ppu.ly == 144 { // TEMPORARY
-                            system.write(0xFF46, 0xC0);
-                            cpu.halted = false;
-                        }
                         for _ in 0..1000 {
                             cpu.execute_next(&mut system);
                         }

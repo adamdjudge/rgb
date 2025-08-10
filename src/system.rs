@@ -19,6 +19,7 @@ pub struct System {
     oam: Vec<u8>,
     hram: Vec<u8>,
 
+    ireq: u8,
     ie: u8,
 }
 
@@ -32,6 +33,7 @@ impl System {
             wram: (0..WRAM_SIZE).map(|_| rand::rng().random()).collect(),
             oam: (0..OAM_SIZE).map(|_| rand::rng().random()).collect(),
             hram: (0..HRAM_SIZE).map(|_| rand::rng().random()).collect(),
+            ireq: 0,
             ie: 0,
         }
     }
@@ -45,6 +47,7 @@ impl System {
             0xE000..0xFE00 => 0xFF,
             0xFE00..0xFEA0 => self.oam[addr as usize - 0xFE00],
             0xFEA0..0xFF00 => 0x00,
+            0xFF0F => self.ireq,
             0xFF40 => self.ppu.lcdc,
             0xFF41 => self.ppu.get_stat(),
             0xFF42 => self.ppu.scy,
@@ -72,6 +75,7 @@ impl System {
             0xA000..0xC000 => self.extram[addr as usize - 0xA000] = data,
             0xC000..0xE000 => self.wram[addr as usize - 0xC000] = data,
             0xFE00..0xFEA0 => self.oam[addr as usize - 0xFE00] = data,
+            0xFF0F => self.ireq = data,
             0xFF40 => self.ppu.lcdc = data,
             0xFF41 => self.ppu.set_stat(data),
             0xFF42 => self.ppu.scy = data,
@@ -109,5 +113,8 @@ impl System {
 
     pub fn draw_scanline(&mut self, framebuf: &mut [u8]) {
         self.ppu.draw_scanline(framebuf, &mut self.vram, &mut self.oam);
+        if self.ppu.ly == 144 {
+            self.ireq |= 0x1;
+        }
     }
 }

@@ -169,6 +169,22 @@ impl CPU {
     }
 
     pub fn execute_next(&mut self, system: &mut System) {
+        if self.ime {
+            let interrupt_enable = system.read(0xFFFF);
+            let interrupt_flags = system.read(0xFF0F);
+            let interrupt_requests = (interrupt_enable & interrupt_flags) & 0x1F;
+
+            if interrupt_requests != 0 {
+                let interrupt_number = interrupt_requests.trailing_zeros();
+                system.write(0xFF0F, interrupt_flags & !(1 << interrupt_number));
+                
+                self.push16(system, self.pc);
+                self.pc = 0x40 + 8 * interrupt_number as u16;
+                self.ime = false;
+                self.halted = false;
+            }
+        }
+
         if self.halted {
             return;
         }
